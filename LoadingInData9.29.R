@@ -20,3 +20,14 @@ master <- bind_rows(
 master <- type.convert(master, as.is = TRUE)
 
 write.csv(master, "masterScholarship.csv", row.names = FALSE)
+master <- master %>%
+  mutate(
+    amount_num = suppressWarnings(as.numeric(trimws(as.character(Amount.Awarded)))),
+    won_money  = if_else(!is.na(amount_num) & amount_num > 0, "Won money", "Did not win")
+  )
+
+winners    <- filter(master, won_money == "Won money")
+nonwinners <- filter(master, won_money == "Did not win")
+
+write.csv(master, "masterScholarship.csv", row.names = FALSE)
+table(master$year, master$won_money)  
