@@ -65,3 +65,15 @@ OneRow.Scholarship <- best_row |>
 
 nrow(OneRow.Scholarship)
 rm(master, all_chr, MasterComplete, best_row, summary_cols)
+
+MasterScholarship <- MasterScholarship %>%
+  mutate(
+    amount_num = suppressWarnings(as.numeric(trimws(as.character(Amount.Awarded)))),
+    won_money  = if_else(!is.na(amount_num) & amount_num > 0, "Won money", "Did not win")
+  )
+
+winners    <- filter(MasterScholarship, won_money == "Won money")
+nonwinners <- filter(MasterScholarship, won_money == "Did not win")
+
+write.csv(MasterScholarship, "$WonMasterScholarship.csv", row.names = FALSE)
+table(MasterScholarship$year, MasterScholarship$won_money)
