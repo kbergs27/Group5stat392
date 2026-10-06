@@ -78,30 +78,3 @@ nonwinners <- filter(MasterScholarship, won_money == "Did not win")
 write.csv(MasterScholarship, "$WonMasterScholarship.csv", row.names = FALSE)
 table(MasterScholarship$year, MasterScholarship$won_money)
 
-LocationTally <- OneRow.Scholarship |>
-  group_by(year, CityTown.of.Residence) |>
-  summarise(
-    Winners = sum(total_awarded > 0, na.rm = TRUE),
-    Nonwinners = sum(total_awarded == 0, na.rm = TRUE),
-    Total = n(),
-    .groups = "drop"
-  ) |>
-  arrange(year, CityTown.of.Residence)
-
-View(LocationTally)
-
-write.csv(LocationTally, "LocationTally.csv", row.names = FALSE)
-sort(LocationTally,decreasing=FALSE)
-
-OneRow.Scholarship <- OneRow.Scholarship |>
-  mutate(town = tolower(trimws(CityTown.of.Residence)),
-         region = case_when(
-           town == "worcester" ~ "Worcester",
-           town %in% c("west boylston","boylston","shrewsbury","northborough","westborough","southborough","berlin","bolton","clinton","sterling","lancaster","harvard","leominster","fitchburg","lunenburg") ~ "Northeast",
-           town %in% c("holden","paxton","princeton","rutland","oakham","barre","hubbardston","westminster","ashburnham","gardner","winchendon","templeton","phillipston","royalston","athol","petersham","hardwick","new braintree","north brookfield") ~ "Northwest",
-           town %in% c("millbury","grafton","upton","sutton","northbridge","hopedale","mendon","douglas","uxbridge","millville","blackstone","milford") ~ "Southeast",
-           town %in% c("auburn","leicester","spencer","charlton","oxford","sturbridge","southbridge","dudley","webster","brookfield","east brookfield","west brookfield","warren") ~ "Southwest",
-           TRUE ~ "Other"))
-
-table(OneRow.Scholarship$region)
-table(OneRow.Scholarship$region, ifelse(OneRow.Scholarship$total_awarded > 0, "Winner", "Loser"))
