@@ -1,0 +1,610 @@
+---
+title: "From Scholarship Records to One Row per Student"
+subtitle: "STAT 392 · A worked data-wrangling example"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+# knitr::opts_chunk$set() sets defaults for all code chunks:
+# echo = TRUE displays the code; message = FALSE hides startup messages.
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+# options() changes how R displays results. Here, tibble.width = Inf
+# asks printed tibbles to show all columns.
+options(tibble.width = Inf)
+```
+
+## What are we trying to produce?
+
+We begin with several scholarship-process records for each student. We want
+**one row per student**, with a column listing their associated scholarships
+and a column summarizing their request status.
+
+The data below are entirely fictional and included in this file. They use
+the relevant column names and kinds of values from the project data, but
+contain no actual student records. This example covers **one application
+year**. If you combine years, group by both student and application year.
+
+Two columns contain different kinds of information:
+
+| Column | How we use it here |
+|:--|:--|
+| `Request Status` | One value per record; used in the main example. |
+| `Submission Status` | Several semicolon-separated values; explored in the optional section. |
+
+This walkthrough assumes a specific definition of **“furthest,”** shown in
+Step 5. Depending on your definition, you may use a different ranking or
+follow slightly different data-wrangling steps.
+
+Open this file in RStudio. Run the chunks **in order**, inspecting each
+intermediate result, or click **Knit** to generate an HTML walkthrough.
+
+## 0. Load the packages
+
+- `library(tidyverse)` loads the installed tidyverse packages so their
+  functions are available in this R session.
+
+```{r load-packages}
+# Load the tidyverse, which includes the packages used in this example.
+library(tidyverse)
+```
+
+The pipe, `%>%`, passes a result to the next operation. Names containing
+spaces, such as `` `Process Name` ``, need backticks when used in R code.
+
+## 1. Create a small dummy dataset
+
+Each row is a process record associated with a student. A student has a
+general application record and additional named-scholarship records.
+The example has ten records for three students. Each student–process
+combination occurs once here.
+
+What the functions do:
+
+- `tibble()` builds a table from the named columns supplied inside it.
+- `c()` combines several values into one vector—a sequence of values for a
+  column. The first value in each column belongs to the first row, the second
+  to the second row, and so on.
+
+`NA` marks a missing value. Writing the object name `scholarship_data` on its
+own displays the table.
+
+```{r create-dummy-data}
+# All names, scholarship titles, and award amounts below are invented.
+scholarship_data <- tibble(
+  fake_first = c(
+    "Avery", "Avery", "Avery",
+    "Jordan", "Jordan", "Jordan",
+    "Maya", "Maya", "Maya", "Maya"
+  ),
+  fake_last = c(
+    "Chen", "Chen", "Chen",
+    "Lopez", "Lopez", "Lopez",
+    "Patel", "Patel", "Patel", "Patel"
+  ),
+  `Process Name` = c(
+    "2025 Community Scholarship Application",
+    "River Valley Scholarship 2025",
+    "Community Leadership Award 2025",
+    "2025 Community Scholarship Application",
+    "River Valley Scholarship 2025",
+    "STEM Futures Scholarship 2025",
+    "2025 Community Scholarship Application",
+    "Community Leadership Award 2025",
+    "STEM Futures Scholarship 2025",
+    "First Generation Scholars Award 2025"
+  ),
+  `Submission Status` = c(
+    "Submitted; Assigned",
+    "Submitted; Submitted; Complete",
+    "Submitted; Complete; Complete; Assigned; Complete",
+    "Submitted; Assigned",
+    "Submitted; Submitted; Complete",
+    "Submitted; Submitted; Complete",
+    "Submitted; Assigned; Assigned",
+    "Submitted; Submitted; Complete",
+    "Submitted; Complete; Complete; Assigned; Assigned; Complete",
+    "Submitted; Submitted; Complete"
+  ),
+  `Request Status` = c(
+    "Application Submitted", "Denied", "Follow Up(s) Assigned",
+    "Application Submitted", "Denied", "Denied",
+    "Application Submitted", "Denied", "Follow Up(s) Assigned", "Denied"
+  ),
+  `Amount Awarded` = c(
+    NA, NA, 2500,
+    NA, NA, NA,
+    NA, NA, 4000, NA
+  )
+)
+
+# Inspect the starting records before changing anything.
+scholarship_data
+```
+
+Notice that `Submission Status` can contain several values, while
+`Request Status` contains one value. We will not split `Submission Status`
+until the optional section.
+
+## 2. Identify students consistently
+
+For these fictional records, first name plus last name identifies a student.
+This is appropriate only when the identifier is known to be consistent and
+unique; names are not generally reliable identifiers in other datasets.
+
+What the functions do:
+
+- `mutate()` adds the new `student_id` column while keeping the existing
+  columns and rows.
+- `str_c(fake_first, fake_last, sep = " ")` joins the first and last name
+  **within each row**, with a space between them.
+- `distinct()` keeps the specified columns and one copy of each unique
+  combination. Here, it reduces the repeated student names to a roster.
+
+```{r identify-students}
+# Combine the two name fields to identify the same student across rows.
+scholarship_data <- scholarship_data %>%
+  mutate(student_id = str_c(fake_first, fake_last, sep = " "))
+
+# Save a roster before filtering any records, so no student disappears
+# simply because they have only a general application record.
+student_roster <- scholarship_data %>%
+  distinct(student_id, fake_first, fake_last)
+
+# Inspect the three students represented in the data.
+student_roster
+```
+
+## 3. Separate general applications from named scholarships
+
+The general application is not itself a named scholarship. We exclude it
+from the scholarship list, but retain it when summarizing request statuses.
+For real data, first inspect the process names and identify the appropriate
+general-application label or labels.
+
+What the functions do:
+
+- `mutate()` adds `is_general_application`, a column of `TRUE`/`FALSE` values.
+- `filter()` keeps rows for which its condition is `TRUE`. Here,
+  `!is_general_application` keeps rows that are not general applications.
+- `select()` keeps the columns we want to display so we can inspect the
+  classification easily.
+
+The comparison `==` checks whether two values are equal. The operator `!`
+means “not,” reversing `TRUE` and `FALSE`.
+
+```{r identify-scholarship-records}
+# Mark the general application using its exact fictional process name.
+scholarship_data <- scholarship_data %>%
+  mutate(
+    is_general_application =
+      `Process Name` == "2025 Community Scholarship Application"
+  )
+
+# Keep named-scholarship records in a separate object.
+scholarship_records <- scholarship_data %>%
+  filter(!is_general_application)
+
+# Check the classification before relying on it.
+scholarship_data %>%
+  select(student_id, `Process Name`, is_general_application)
+```
+
+## 4. Combine scholarship names into one column
+
+What the functions do:
+
+- `group_by(student_id)` tells subsequent operations to work separately
+  within each student; it does not yet reduce the number of rows.
+- `summarise()` produces one row per student from the summary we define.
+- `unique()` removes repeated scholarship names within that student's group.
+- `sort()` arranges those names alphabetically.
+- `str_c(..., collapse = "; ")` combines **all the names in the group** into
+  one text value, separated by semicolons. Unlike `sep` in Step 2, `collapse`
+  joins values across the vector rather than joining columns within a row.
+
+The argument `.groups = "drop"` returns an ungrouped table, so later
+operations do not automatically continue working student by student.
+
+```{r combine-scholarships}
+# Combine the distinct named scholarships associated with each student.
+scholarship_list <- scholarship_records %>%
+  group_by(student_id) %>%
+  summarise(
+    scholarships_considered = str_c(
+      sort(unique(`Process Name`)),
+      collapse = "; "
+    ),
+    .groups = "drop" # Return an ordinary, ungrouped table.
+  )
+
+# Each row should now represent one student.
+scholarship_list
+```
+
+We use the label `scholarships_considered` here. Confirm what a process record
+represents before describing this list as scholarships a student explicitly
+applied for.
+
+## 5. Define a request-status priority rule
+
+In this example, “furthest” means the status with the highest rank in this
+table. These ranks tell R which label to keep when a student has several
+different request statuses.
+
+| Request status | Rank |
+|:--|--:|
+| Application Submitted | 1 |
+| Denied | 2 |
+| Follow Up(s) Assigned | 3 |
+
+What the functions do:
+
+- `mutate()` adds `request_status_rank` to each original record.
+- `case_when()` checks the conditions in order and returns the value after
+  `~` for the first condition that matches. Here, it translates status text
+  into a number; `TRUE ~ NA_real_` leaves other labels with a missing numeric
+  rank.
+- `select()` displays the student, process, original status, and new rank
+  together so we can check the translation.
+
+```{r rank-request-status}
+# Assign a numeric rank to each recognized status.
+status_data <- scholarship_data %>%
+  mutate(
+    request_status_rank = case_when(
+      `Request Status` == "Application Submitted" ~ 1,
+      `Request Status` == "Denied" ~ 2,
+      `Request Status` == "Follow Up(s) Assigned" ~ 3,
+      TRUE ~ NA_real_ # Leave missing or unrecognized statuses unranked.
+    )
+  )
+
+# Check that the ranks match the rule above.
+status_data %>%
+  select(student_id, `Process Name`, `Request Status`, request_status_rank)
+```
+
+The following check lists labels that did not receive a rank. An empty
+table is expected for this dummy dataset.
+
+- `is.na()` checks whether a rank is missing, returning `TRUE` or `FALSE`.
+- `filter()` keeps only rows with missing ranks.
+- `distinct()` shows each unranked status label once.
+
+```{r inspect-unranked-statuses}
+# Identify labels that the priority rule does not cover.
+status_data %>%
+  filter(is.na(request_status_rank)) %>%
+  distinct(`Request Status`)
+```
+
+## 6. Select one request status per student
+
+What the functions do:
+
+- `is.na()` identifies missing ranks; `!` reverses the result, identifying
+  ranks that are present.
+- `filter()` keeps rows with a recognized, nonmissing rank.
+- `group_by(student_id)` organizes the next step separately for each student.
+- `slice_max()` keeps the row with the largest rank in each group.
+  `n = 1` requests one row, and `with_ties = FALSE` keeps just one if several
+  rows share the maximum.
+- `ungroup()` removes the grouping after the selection is finished.
+- `select()` keeps the ID, status, and rank. The notation `new_name = old_name`
+  also renames the selected columns.
+
+Tied maximum ranks have the same status label here, so selecting one is
+sufficient for this status summary.
+
+```{r summarize-request-status}
+# Select the highest-priority recognized status across each student's records.
+furthest_request_status <- status_data %>%
+  filter(!is.na(request_status_rank)) %>%
+  group_by(student_id) %>%
+  slice_max(
+    order_by = request_status_rank,
+    n = 1,
+    with_ties = FALSE
+  ) %>%
+  ungroup() %>%
+  select(
+    student_id,
+    furthest_request_status = `Request Status`,
+    furthest_request_status_rank = request_status_rank
+  )
+
+# Inspect the one-status-per-student result.
+furthest_request_status
+```
+
+A student with no recognized status will be absent from this intermediate
+table. Joining to the full roster later preserves that student and gives
+them a missing summary status. If only some statuses are unrecognized,
+the summary reflects only the recognized ones; resolve those labels first.
+
+## 7. Keep outcome information separately
+
+An overall status hides differences across scholarship records. Separate
+flags preserve whether any denial or follow-up was recorded and whether any
+positive award amount was recorded.
+
+In this example, each nonmissing amount represents a separate award that
+appears once. **Check that assumption before summing real records.** Repeated
+records or a student-level total repeated across scholarships would lead
+to double counting.
+
+What the functions and conditional do:
+
+- `group_by(student_id)` makes each summary use one student's records.
+- `summarise()` creates one row per student, with the outcome columns defined
+  inside it.
+- `any()` asks whether **at least one** value meets a condition—for example,
+  whether at least one award amount is positive. Here, `na.rm = TRUE` ignores
+  missing values while checking.
+- `is.na()` identifies the missing award amounts.
+- `all()` asks whether **every** value is `TRUE`. Thus,
+  `all(is.na(...))` checks whether all of a student's award amounts are missing.
+- `if (...) { ... } else { ... }` chooses between two results: return `NA`
+  when all amounts are missing; otherwise calculate the sum.
+- `sum()` adds the recorded amounts. Here, `na.rm = TRUE` omits missing
+  amounts from the calculation.
+
+Again, `.groups = "drop"` returns an ungrouped summary table.
+
+```{r summarize-outcomes}
+# Summarize the observed evidence across each student's records.
+student_outcomes <- scholarship_data %>%
+  group_by(student_id) %>%
+  summarise(
+    had_denial = any(`Request Status` == "Denied", na.rm = TRUE),
+    had_follow_up = any(
+      `Request Status` == "Follow Up(s) Assigned",
+      na.rm = TRUE
+    ),
+    has_recorded_award = any(`Amount Awarded` > 0, na.rm = TRUE),
+
+    # Preserve NA if every amount is missing; do not convert missing to zero.
+    total_recorded_award = if (all(is.na(`Amount Awarded`))) {
+      NA_real_
+    } else {
+      sum(`Amount Awarded`, na.rm = TRUE)
+    },
+    .groups = "drop"
+  )
+
+# Inspect the outcome flags and recorded amounts.
+student_outcomes
+```
+
+Here, `FALSE` means the feature was **not observed in these records**.
+For example, `has_recorded_award = FALSE` does not establish that a student
+received no award when the amounts are missing. A sum of observed amounts
+is also not necessarily a complete total if some amounts are missing.
+
+## 8. Join the student-level summaries
+
+Each summary now has one row per student. Starting from the roster retains
+students who lack named-scholarship rows.
+
+What the functions do:
+
+- `left_join()` adds columns from another table by matching `student_id`.
+  It keeps every row of the table on the left and fills unmatched columns
+  with `NA`. Here, each summary has at most one match per student, so the
+  joins preserve one row per student.
+- `select()` chooses the main result columns to display. The full
+  `student_summary` object still contains all the joined columns.
+
+```{r join-summaries}
+# Add each summary to the complete student roster.
+student_summary <- student_roster %>%
+  left_join(scholarship_list, by = "student_id") %>%
+  left_join(furthest_request_status, by = "student_id") %>%
+  left_join(student_outcomes, by = "student_id")
+
+# Display the main result: one row per student.
+student_summary %>%
+  select(
+    student_id,
+    scholarships_considered,
+    furthest_request_status,
+    has_recorded_award,
+    total_recorded_award
+  )
+```
+
+Check the result against the original ten rows:
+
+| Student | Named scholarships | Selected request status | Recorded award total |
+|:--|--:|:--|--:|
+| Avery Chen | 2 | Follow Up(s) Assigned | 2500 |
+| Jordan Lopez | 2 | Denied | NA |
+| Maya Patel | 3 | Follow Up(s) Assigned | 4000 |
+
+Jordan's missing total remains `NA`. Avery and Maya each have a denial in
+another scholarship record, even though their selected status is
+Follow Up(s) Assigned. You can see this in `student_outcomes`.
+
+## Optional: summarize the values inside Submission Status
+
+If “furthest” refers to the values inside `Submission Status`, first split
+the semicolon-separated field before ranking and summarizing.
+
+### 9. Give each original record an ID
+
+We need a record ID to remember which row each status came from after
+splitting the field.
+
+What the functions do:
+
+- `mutate()` adds a `record_id` column without removing any existing columns.
+- `row_number()` numbers the rows in their current order: 1, 2, 3, and so on.
+  We assign these numbers before splitting, so each expanded row will retain
+  its original record ID.
+
+```{r identify-original-records}
+# Number the original records before expanding them.
+submission_long <- scholarship_data %>%
+  mutate(record_id = row_number())
+```
+
+### 10. Split the field at each semicolon
+
+For example, `Submitted; Submitted; Complete` becomes three rows with
+the same `record_id`.
+
+What the functions do:
+
+- `separate_rows()` splits the status field at each semicolon (`sep = ";"`)
+  and puts each piece on its own row, repeating the other column values.
+- `mutate()` replaces the status column with its cleaned version.
+- `str_trim()` removes spaces at the beginning and end of each status value.
+- `filter(record_id <= 3)` keeps the expanded rows belonging to the first
+  three original records for inspection.
+- `select()` displays only the record ID, student, process, and status.
+
+```{r split-submission-status}
+# Expand each semicolon-separated field into individual status values.
+submission_long <- submission_long %>%
+  separate_rows(`Submission Status`, sep = ";") %>%
+  mutate(`Submission Status` = str_trim(`Submission Status`))
+
+# Inspect the first three original records after expansion.
+submission_long %>%
+  filter(record_id <= 3) %>%
+  select(record_id, student_id, `Process Name`, `Submission Status`)
+```
+
+All other columns are repeated when a row is expanded. **Do not sum award
+amounts in this expanded table:** an award would be counted once per status
+value instead of once per original record.
+
+### 11. Define an ordering
+
+For this optional example, assume the ordering Submitted = 1, Complete = 2,
+Assigned = 3.
+
+What the functions do:
+
+- `mutate()` adds a numeric rank to each expanded status row.
+- `case_when()` matches each status label to the corresponding number.
+  Its final `TRUE ~ NA_real_` assigns a missing rank to any other value.
+
+```{r rank-submission-status}
+# Apply the chosen ordering to each individual status value.
+submission_long <- submission_long %>%
+  mutate(
+    submission_status_rank = case_when(
+      `Submission Status` == "Submitted" ~ 1,
+      `Submission Status` == "Complete" ~ 2,
+      `Submission Status` == "Assigned" ~ 3,
+      TRUE ~ NA_real_
+    )
+  )
+```
+
+### 12. Select one status per original record
+
+First summarize within `record_id`, not within student. This preserves a
+separate result for each original process record.
+
+What the functions do:
+
+- `is.na()` identifies missing ranks; `!` identifies the nonmissing ones.
+- `filter()` keeps only rows with a recognized status rank.
+- `group_by(record_id)` collects the expanded rows from each original record
+  into their own group.
+- `slice_max()` selects the largest rank within each record.
+  `n = 1, with_ties = FALSE` keeps a single row even if a status is repeated.
+- `ungroup()` removes the record-level grouping after the selection.
+- `select()` keeps the identifiers, status, and rank, and gives the last two
+  columns descriptive names using `new_name = old_name`.
+
+```{r summarize-submission-by-record}
+# Select the highest-ranked recognized value within each original record.
+furthest_submission_by_record <- submission_long %>%
+  filter(!is.na(submission_status_rank)) %>%
+  group_by(record_id) %>%
+  slice_max(
+    order_by = submission_status_rank,
+    n = 1,
+    with_ties = FALSE
+  ) %>%
+  ungroup() %>%
+  select(
+    record_id,
+    student_id,
+    `Process Name`,
+    furthest_submission_status = `Submission Status`,
+    furthest_submission_status_rank = submission_status_rank
+  )
+
+# Inspect the simplified status for each original record.
+furthest_submission_by_record
+```
+
+Records with no recognized values are absent from this intermediate table.
+To retain all original records, join this result back to a roster of record
+IDs. If a student–scholarship combination has multiple original records,
+this is still a record-level table, not yet one row per student–scholarship.
+
+### 13. Optionally summarize again by student
+
+Only take this additional step if the research question needs one summary
+for the student across all process records. This example includes general
+application records; filter those out first if the intended summary should
+describe named scholarships only.
+
+What the functions do:
+
+- `group_by(student_id)` groups the record-level results by student.
+- `slice_max()` selects the largest record-level rank for each student;
+  `n = 1, with_ties = FALSE` keeps one row.
+- `ungroup()` removes the student grouping once the selection is complete.
+- `select()` keeps only the student ID and the selected status and rank.
+- `left_join()` matches this result to the full roster by `student_id`,
+  retaining students who have no recognized submission status.
+
+```{r summarize-submission-by-student}
+# Select the highest-ranked record-level status within each student.
+furthest_submission_by_student <- furthest_submission_by_record %>%
+  group_by(student_id) %>%
+  slice_max(
+    order_by = furthest_submission_status_rank,
+    n = 1,
+    with_ties = FALSE
+  ) %>%
+  ungroup() %>%
+  select(
+    student_id,
+    furthest_submission_status,
+    furthest_submission_status_rank
+  )
+
+# Keep all students, even if none of their submission values were recognized.
+student_roster %>%
+  left_join(furthest_submission_by_student, by = "student_id")
+```
+
+All three students receive Assigned under this rule because each has
+Assigned in the general application record.
+
+## Adapting this example
+
+Before using the pattern on the project data, decide:
+
+- **Unit of analysis:** one student, one student per year, or one
+  student–scholarship combination? Group by the corresponding identifiers.
+- **Meaning of a process:** does it indicate a submitted application,
+  eligibility, consideration, or something else? Label the list accordingly.
+- **Meaning of repeated records and amounts:** do records represent distinct
+  awards, repeated exports, or multiple stages? Resolve this before adding
+  amounts or removing duplicates.
+
+Keep the original records and the intermediate summaries. A student-level
+summary is useful, but it no longer shows which status belongs to which
+scholarship. Return to the detailed records when that relationship matters.
