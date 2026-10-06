@@ -84,6 +84,7 @@ LocationTally <- OneRow.Scholarship |>
     Winners = sum(total_awarded > 0, na.rm = TRUE),
     Nonwinners = sum(total_awarded == 0, na.rm = TRUE),
     Total = n(),
+    Dollars_Awarded = sum(total_awarded, na.rm = TRUE),
     .groups = "drop"
   ) |>
   arrange(year, CityTown.of.Residence)
