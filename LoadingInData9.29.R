@@ -77,3 +77,17 @@ nonwinners <- filter(MasterScholarship, won_money == "Did not win")
 
 write.csv(MasterScholarship, "$WonMasterScholarship.csv", row.names = FALSE)
 table(MasterScholarship$year, MasterScholarship$won_money)
+
+LocationTally <- OneRow.Scholarship |>
+  group_by(year, CityTown.of.Residence) |>
+  summarise(
+    Winners = sum(total_awarded > 0, na.rm = TRUE),
+    Nonwinners = sum(total_awarded == 0, na.rm = TRUE),
+    Total = n(),
+    .groups = "drop"
+  ) |>
+  arrange(year, CityTown.of.Residence)
+
+View(LocationTally)
+
+write.csv(LocationTally, "LocationTally.csv", row.names = FALSE)
