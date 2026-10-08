@@ -1,4 +1,5 @@
 library(tidyverse)
+#
 Scholarship22<- read.csv("deidScholarship22.csv")
 Scholarship23<- read.csv("deidScholarship23.csv")
 Scholarship24<- read.csv("deidScholarship24.csv")
@@ -120,3 +121,46 @@ View(
       total_awarded
     )
 )
+
+s <- str_to_lower(OneRow.Scholarship$scholarships)
+
+geo <- case_when(
+  str_detect(s, "auburn knights|auburn woman|hedin|bourke") ~ "Auburn",
+  str_detect(s, "falby") ~ "Boylston",
+  str_detect(s, "charlton parent") ~ "Charlton",
+  str_detect(s, "wagner") ~ "Douglas",
+  str_detect(s, "east brookfield scholarship") ~ "East Brookfield",
+  str_detect(s, "kelly.{0,4}davis|ahlquist") ~ "Grafton",
+  str_detect(s, "arsenault|leicester (high|savings|samaritan)|expository") ~ "Leicester",
+  str_detect(s, "lunenburg") ~ "Lunenburg",
+  str_detect(s, "carolyn.{0,4}cannon") ~ "Millbury",
+  str_detect(s, "anne carey|salem educational") ~ "North Brookfield",
+  str_detect(s, "keeler|northbridge high") ~ "Northbridge",
+  str_detect(s, "olive wood") ~ "Oxford",
+  str_detect(s, "simonatis") ~ "Princeton",
+  str_detect(s, "wolcott") ~ "Shrewsbury",
+  str_detect(s, "eppinger|gaudette") ~ "Spencer",
+  str_detect(s, "fedeli") ~ "Sterling",
+  str_detect(s, "junnila|simonian|freeland|connolly|henrickson|norlin") ~ "Sutton",
+  str_detect(s, "bradford.{0,4}kemp") ~ "Webster",
+  str_detect(s, "denfeld|fannie.{0,4}forbes|grynsel") ~ "Westborough",
+  str_detect(s, "janet fraser") ~ "Medway",
+  str_detect(s, "harold.{0,4}jensen|john buckley|worcester woman|lincoln village|joseph.{0,4}early|feingold|kaufman|belmont street|elm park|lyons|dorothy.{0,4}smith|davidian|webster square|hanson") ~ "Worcester",
+  str_detect(s, "tahanto|debbie anne|goulet") ~ "Boylston",
+  str_detect(s, "andrew sala") ~ "Upton",
+  str_detect(s, "walker family") ~ "Templeton",
+  str_detect(s, "proko") ~ "Holden",
+  str_detect(s, "greg.{0,2}s grant") ~ "Acton",
+  str_detect(s, "kathleen terry") ~ "Sturbridge",
+  str_detect(s, "hampel") ~ "Cheshire",
+  str_detect(s, "kuhner") ~ "Oakham",
+  str_detect(s, "belval") ~ "Northbridge",
+  str_detect(s, "burgholzer") ~ "Shrewsbury",
+  str_detect(s, "lock memorial") ~ "Spencer"
+)
+
+old <- if ("CityTown.of.Residence" %in% names(OneRow.Scholarship)) OneRow.Scholarship$CityTown.of.Residence else OneRow.Scholarship$Town
+old <- na_if(trimws(as.character(old)), "  NA")
+
+OneRow.Scholarship$Town <- coalesce(old, geo)
+OneRow.Scholarship <- select(OneRow.Scholarship, -any_of(c("CityTown.of.Residence", "geo_town")))
