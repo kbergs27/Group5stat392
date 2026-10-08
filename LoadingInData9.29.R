@@ -105,3 +105,4 @@ OneRow.Scholarship <- OneRow.Scholarship |>
 
 table(OneRow.Scholarship$region)
 table(OneRow.Scholarship$region, ifelse(OneRow.Scholarship$total_awarded > 0, "Winner", "Loser"))
+
