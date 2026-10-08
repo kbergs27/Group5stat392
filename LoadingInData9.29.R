@@ -107,3 +107,16 @@ OneRow.Scholarship <- OneRow.Scholarship |>
 table(OneRow.Scholarship$region)
 table(OneRow.Scholarship$region, ifelse(OneRow.Scholarship$total_awarded > 0, "Winner", "Loser"))
 
+View(
+  OneRow.Scholarship |>
+    select(
+      year,
+      fake_first,
+      fake_last,
+      CityTown.of.Residence,
+      Request.Status,
+      scholarships,
+      n_scholarships,
+      total_awarded
+    )
+)
