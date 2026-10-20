@@ -93,7 +93,6 @@ LocationTally <- OneRow.Scholarship |>
 View(LocationTally)
 
 write.csv(LocationTally, "LocationTally.csv", row.names = FALSE)
-sort(LocationTally,decreasing=FALSE)
 
 OneRow.Scholarship <- OneRow.Scholarship |>
   mutate(town = tolower(trimws(CityTown.of.Residence)),
@@ -164,3 +163,11 @@ old <- na_if(trimws(as.character(old)), "  NA")
 
 OneRow.Scholarship$Town <- coalesce(old, geo)
 OneRow.Scholarship <- select(OneRow.Scholarship, -any_of(c("CityTown.of.Residence", "geo_town")))
+
+OneRow.Scholarship <- OneRow.Scholarship |>
+  mutate(
+    Town_clean = str_remove_all(Town, "\\s+"),
+    Town_clean = na_if(Town_clean, "")
+  )
+
+View(OneRow.Scholarship |> select(Town, Town_clean))
