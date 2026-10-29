@@ -189,4 +189,5 @@ LocationTallyPostSchol <- OneRowPerApplicant |>
 
 View(LocationTallyPostSchol)
 write.csv(LocationTallyPostSchol, "LocationTallyPostSchol.csv", row.names = FALSE)
-
+write.csv(MasterCompleteRanked, "MasterCompleteRanked.csv", row.names = FALSE)
+write.csv(OneRowPerApplicant,"PostCleanMaster.csv", row.names = FALSE)
