@@ -28,18 +28,18 @@ sapply(list(Scholarship22, Scholarship23, Scholarship24, Scholarship25, Scholars
 table(c(Scholarship22$Request.Status, Scholarship23$Request.Status,
         Scholarship24$Request.Status, Scholarship25$Request.Status,
         Scholarship26$Request.Status), useNA = "ifany")
-Clean.MasterScholarship <- MasterScholarship |>
+CompleteApps.MasterScholarship <- MasterScholarship |>
   filter(Request.Status %in% c("Application Complete", "Evaluations Assigned",
                                "Evaluations Closed", "Follow Up(s) Assigned",
                                "Denied", "Closed", "Approved", "Approval Draft"))
 
-nrow(Clean.MasterScholarship)
-nrow(distinct(Clean.MasterScholarship, year, fake_first, fake_last))
-Clean.MasterScholarship |>
+nrow(CompleteApps.MasterScholarship)
+nrow(distinct(CompleteApps.MasterScholarship, year, fake_first, fake_last))
+CompleteApps.MasterScholarship |>
   count(year, fake_first, fake_last) |>
   count(n, name = "applicants")
 
-MasterCompleteApps <- Clean.MasterScholarship |>
+MasterCompleteRanked <- CompleteApps.MasterScholarship |>
   mutate(rank = case_when(
     Request.Status == "Approved" ~ 1,
     Request.Status == "Approval Draft" ~ 2,
@@ -49,22 +49,22 @@ MasterCompleteApps <- Clean.MasterScholarship |>
     Request.Status == "Closed" ~ 5,
     Request.Status == "Application Complete" ~ 6))
 
-best_row <- MasterCompleteApps |>
+best_row <- MasterCompleteRanked |>
   arrange(year, fake_first, fake_last, rank) |>
   distinct(year, fake_first, fake_last, .keep_all = TRUE)
 
-summary_cols <- MasterCompleteApps |>
+summary_cols <- MasterCompleteRanked |>
   group_by(year, fake_first, fake_last) |>
   summarise(n_scholarships = n_distinct(Process.Name),
             scholarships = paste(sort(unique(Process.Name)), collapse = "; "),
             total_awarded = sum(parse_number(as.character(Amount.Awarded)), na.rm = TRUE),
             .groups = "drop")
 
-OneRow.Scholarship <- best_row |>
+OneRowPerApplicant <- best_row |>
   left_join(summary_cols, by = c("year", "fake_first", "fake_last")) |>
   select(-rank)
 
-nrow(OneRow.Scholarship)
+nrow(OneRowPerApplicant)
 rm(master, all_chr, MasterComplete, best_row, summary_cols)
 
 MasterScholarship <- MasterScholarship %>%
@@ -79,7 +79,7 @@ nonwinners <- filter(MasterScholarship, won_money == "Did not win")
 write.csv(MasterScholarship, "$WonMasterScholarship.csv", row.names = FALSE)
 table(MasterScholarship$year, MasterScholarship$won_money)
 
-LocationTally <- OneRow.Scholarship |>
+LocationTallyPreSchol <- OneRowPerApplicant |>
   group_by(year, CityTown.of.Residence) |>
   summarise(
     Winners = sum(total_awarded > 0, na.rm = TRUE),
@@ -90,11 +90,11 @@ LocationTally <- OneRow.Scholarship |>
   ) |>
   arrange(year, CityTown.of.Residence)
 
-View(LocationTally)
+View(LocationTallyPreSchol)
 
-write.csv(LocationTally, "LocationTally.csv", row.names = FALSE)
+write.csv(LocationTallyPreSchol, "LocationTallyPreSchol.csv", row.names = FALSE)
 
-OneRow.Scholarship <- OneRow.Scholarship |>
+OneRowPerApplicant <- OneRowPerApplicant |>
   mutate(town = tolower(trimws(CityTown.of.Residence)),
          region = case_when(
            town == "worcester" ~ "Worcester",
@@ -104,11 +104,11 @@ OneRow.Scholarship <- OneRow.Scholarship |>
            town %in% c("auburn","leicester","spencer","charlton","oxford","sturbridge","southbridge","dudley","webster","brookfield","east brookfield","west brookfield","warren") ~ "Southwest",
            TRUE ~ "Other"))
 
-table(OneRow.Scholarship$region)
-table(OneRow.Scholarship$region, ifelse(OneRow.Scholarship$total_awarded > 0, "Winner", "Loser"))
+table(OneRowPerApplicant$region)
+table(OneRowPerApplicant$region, ifelse(OneRowPerApplicant$total_awarded > 0, "Winner", "Loser"))
 
 View(
-  OneRow.Scholarship |>
+  OneRowPerApplicant |>
     select(
       year,
       fake_first,
@@ -121,7 +121,7 @@ View(
     )
 )
 
-s <- str_to_lower(OneRow.Scholarship$scholarships)
+s <- str_to_lower(OneRowPerApplicant$scholarships)
 
 geo <- case_when(
   str_detect(s, "auburn knights|auburn woman|hedin|bourke") ~ "Auburn",
@@ -158,15 +158,15 @@ geo <- case_when(
   str_detect(s, "lock memorial") ~ "Spencer"
 )
 
-old <- if ("CityTown.of.Residence" %in% names(OneRow.Scholarship)) OneRow.Scholarship$CityTown.of.Residence else OneRow.Scholarship$Town
+old <- if ("CityTown.of.Residence" %in% names(OneRowPerApplicant)) OneRowPerApplicant$CityTown.of.Residence else OneRowPerApplicant$Town
 old <- na_if(trimws(as.character(old)), "  NA")
 old[!grepl("[A-Za-z]", old)] <- NA
 
-OneRow.Scholarship$Town <- coalesce(old, geo)
-OneRow.Scholarship <- select(OneRow.Scholarship, -any_of(c("CityTown.of.Residence", "geo_town")))
-view(OneRow.Scholarship)
+OneRowPerApplicant$Town <- coalesce(old, geo)
+OneRowPerApplicant <- select(OneRowPerApplicant, -any_of(c("CityTown.of.Residence", "geo_town")))
+view(OneRowPerApplicant)
 
-OneRow.Scholarship <- OneRow.Scholarship |>
+OneRowPerApplicant <- OneRowPerApplicant |>
   mutate(town = tolower(trimws(Town)),
          region = case_when(
            town == "worcester" ~ "Worcester",
@@ -176,9 +176,9 @@ OneRow.Scholarship <- OneRow.Scholarship |>
            town %in% c("auburn","leicester","spencer","charlton","oxford","sturbridge","southbridge","dudley","webster","brookfield","east brookfield","west brookfield","warren") ~ "Southwest",
            TRUE ~ "Other"))
 
-table(OneRow.Scholarship$region, ifelse(OneRow.Scholarship$total_awarded > 0, "Winner", "Loser"))
+table(OneRowPerApplicant$region, ifelse(OneRowPerApplicant$total_awarded > 0, "Winner", "Loser"))
 
-TownTally <- OneRow.Scholarship |>
+LocationTallyPostSchol <- OneRowPerApplicant |>
   mutate(Town = str_to_title(str_squish(Town))) |>
   group_by(year, Town) |>
   summarise(Winners = sum(total_awarded > 0, na.rm = TRUE),
@@ -187,5 +187,6 @@ TownTally <- OneRow.Scholarship |>
             .groups = "drop") |>
   arrange(year, desc(Winners + Losers))
 
-View(TownTally)
-write.csv(TownTally, "TownTally.csv", row.names = FALSE)
+View(LocationTallyPostSchol)
+write.csv(LocationTallyPostSchol, "LocationTallyPostSchol.csv", row.names = FALSE)
+
