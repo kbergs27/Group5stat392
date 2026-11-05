@@ -245,8 +245,196 @@ YearAOV <- aov(total_awarded ~ factor(year), data = OneRowPerApplicant)
 summary(YearAOV)
 TukeyHSD(YearAOV)
 
+#controlling for local scholarships
 Controlled <- OneRowPerApplicant |>
   left_join(PersonEV) |>
   mutate(diff = total_awarded - expected)
 
 summary(aov(diff ~ region, data = Controlled))
+
+##KURT FUNNNEL PLOT
+ApplicantOutcomes <- MasterCompleteRanked |>
+  mutate(
+    status = str_squish(as.character(Request.Status)),
+    amount = parse_number(
+      str_trim(as.character(Amount.Awarded)),
+      na = c("", "NA", "N/A", "--")
+    ),
+    
+    resolved_no_award =
+      coalesce(status == "Denied", FALSE) |
+      (coalesce(status == "Closed", FALSE) &
+         !is.na(amount) & coalesce(amount == 0, FALSE))
+  ) |>
+  group_by(year, fake_first, fake_last) |>
+  summarise(
+    positive_award = any(amount > 0, na.rm = TRUE),
+    all_resolved_no_award = all(resolved_no_award),
+    .groups = "drop"
+  ) |>
+  mutate(
+    awarded = case_when(
+      positive_award ~ 1L,
+      all_resolved_no_award ~ 0L,
+      TRUE ~ NA_integer_
+    )
+  )
+
+FunnelApplicants <- OneRowPerApplicant |>
+  select(year, fake_first, fake_last, Town) |>
+  left_join(
+    ApplicantOutcomes,
+    by = c("year", "fake_first", "fake_last")
+  ) |>
+  mutate(
+    Town = str_to_title(str_squish(Town)),
+    Town = if_else(
+      is.na(Town) |
+        str_to_lower(Town) %in% c("", "na", "n/a", "unknown"),
+      NA_character_,
+      Town
+    )
+  )
+
+FunnelSummary <- FunnelApplicants |>
+  group_by(year) |>
+  summarise(
+    Recipients = sum(awarded == 1, na.rm = TRUE),
+    Nonrecipients = sum(awarded == 0, na.rm = TRUE),
+    Unknown = sum(is.na(awarded)),
+    Missing_town = sum(is.na(Town)),
+    .groups = "drop"
+  ) |>
+  mutate(
+    Known = Recipients + Nonrecipients,
+    Award_rate = if_else(
+      Known > 0,
+      Recipients / Known,
+      NA_real_
+    )
+  )
+
+print(FunnelSummary, width = Inf)
+
+StatusCheck <- MasterCompleteRanked |>
+  mutate(
+    amount = parse_number(
+      str_trim(as.character(Amount.Awarded)),
+      na = c("", "NA", "N/A", "--")
+    )
+  ) |>
+  group_by(year, Request.Status) |>
+  summarise(
+    Applications = n(),
+    Positive_award = sum(amount > 0, na.rm = TRUE),
+    Zero_award = sum(amount == 0, na.rm = TRUE),
+    Missing_amount = sum(is.na(amount)),
+    Total_dollars = sum(amount, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+View(StatusCheck)
+
+TownFunnel <- FunnelApplicants |>
+  filter(year == 2025, !is.na(awarded), !is.na(Town)) |>
+  group_by(Town) |>
+  summarise(
+    known = n(),
+    recipients = sum(awarded),
+    rate = recipients / known,
+    .groups = "drop"
+  )
+
+p0 <- sum(TownFunnel$recipients) / sum(TownFunnel$known)
+
+FunnelLimits <- tibble(n = seq_len(max(TownFunnel$known))) |>
+  mutate(
+    lo95 = qbinom(0.025, n, p0) / n,
+    hi95 = qbinom(0.975, n, p0) / n,
+    lo998 = qbinom(0.001, n, p0) / n,
+    hi998 = qbinom(0.999, n, p0) / n
+  )
+
+TownFunnel <- TownFunnel |>
+  mutate(
+    flag = case_when(
+      recipients < qbinom(0.001, known, p0) ~ "Below 99.8%",
+      recipients > qbinom(0.999, known, p0) ~ "Above 99.8%",
+      recipients < qbinom(0.025, known, p0) ~ "Below 95%",
+      recipients > qbinom(0.975, known, p0) ~ "Above 95%",
+      TRUE ~ "Within limits"
+    )
+  )
+
+FunnelCurves <- FunnelLimits |>
+  pivot_longer(
+    cols = c(lo95, hi95, lo998, hi998),
+    names_to = "boundary",
+    values_to = "rate"
+  ) |>
+  mutate(
+    limit = if_else(
+      boundary %in% c("lo95", "hi95"),
+      "95%", "99.8%"
+    )
+  )
+
+FunnelPlot <- ggplot() +
+  geom_step(
+    data = FunnelCurves,
+    aes(n, rate, group = boundary, linetype = limit),
+    colour = "grey45"
+  ) +
+  geom_hline(
+    yintercept = p0,
+    colour = "steelblue",
+    linewidth = 0.7
+  ) +
+  geom_point(
+    data = TownFunnel,
+    aes(known, rate, colour = flag),
+    size = 3
+  ) +
+  geom_text(
+    data = filter(TownFunnel, flag != "Within limits"),
+    aes(known, rate, label = Town),
+    vjust = -0.8,
+    size = 3,
+    check_overlap = TRUE
+  ) +
+  scale_linetype_manual(
+    name = "Control limits",
+    values = c("95%" = "dashed", "99.8%" = "solid")
+  ) +
+  scale_colour_manual(
+    name = "Town",
+    values = c(
+      "Below 99.8%" = "#08306B",
+      "Above 99.8%" = "#99000D",
+      "Below 95%" = "#4292C6",
+      "Above 95%" = "#EF6548",
+      "Within limits" = "grey35"
+    )
+  ) +
+  scale_x_continuous(trans = "sqrt") +
+  scale_y_continuous(labels = scales::label_percent()) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(
+    title = "2025 scholarship award rates by town",
+    subtitle = paste(
+      "Overall award rate:",
+      scales::percent(p0, accuracy = 0.1)
+    ),
+    x = "Applicants with known outcomes (square-root scale)",
+    y = "Share receiving at least one award",
+    caption = paste(
+      "Exact binomial limits. Outside limits means worth investigating.",
+      "Rates are not adjusted for income or scholarship eligibility."
+    )
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+
+print(FunnelPlot)
+
+View(TownFunnel)
