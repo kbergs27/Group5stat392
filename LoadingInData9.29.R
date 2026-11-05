@@ -191,3 +191,32 @@ View(LocationTallyPostSchol)
 write.csv(LocationTallyPostSchol, "LocationTallyPostSchol.csv", row.names = FALSE)
 write.csv(MasterCompleteRanked, "MasterCompleteRanked.csv", row.names = FALSE)
 write.csv(OneRowPerApplicant,"PostCleanMaster.csv", row.names = FALSE)
+
+sum(suppressWarnings(parse_number(as.character(MasterCompleteRanked$Amount.Awarded))), na.rm = TRUE)
+sum(OneRowPerApplicant$total_awarded)
+
+# Step 1: what each scholarship pays per applicant
+ScholEV <- MasterCompleteRanked |>
+  mutate(amt = replace_na(suppressWarnings(parse_number(as.character(Amount.Awarded))), 0)) |>
+  group_by(Process.Name) |>
+  summarise(sch_ev = mean(amt))
+
+# Step 2: expected $ per person
+PersonEV <- MasterCompleteRanked |>
+  left_join(ScholEV) |>
+  group_by(year, fake_first, fake_last) |>
+  summarise(expected = sum(sch_ev))
+
+# Step 3: town table
+TownEV <- OneRowPerApplicant |>
+  left_join(PersonEV) |>
+  group_by(Town = str_to_title(str_squish(Town))) |>
+  summarise(Applicants = n(),
+            Pct        = 100 * n() / nrow(OneRowPerApplicant),
+            Winners    = sum(total_awarded > 0),
+            Avg_Win    = sum(total_awarded) / Winners,
+            Received   = mean(total_awarded),
+            SD         = sd(total_awarded),
+            Expected   = mean(expected))
+View(TownEV)
+
