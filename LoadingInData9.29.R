@@ -220,3 +220,33 @@ TownEV <- OneRowPerApplicant |>
             Expected   = mean(expected))
 View(TownEV)
 
+TownEV |> mutate(Diff = Received - Expected) |> arrange(desc(Diff)) |> View()
+TownEV |> mutate(Diff = Received - Expected) |> filter(Applicants >= 10) |> arrange(desc(Diff)) |> View()
+
+TownEVYear <- OneRowPerApplicant |>
+  left_join(PersonEV) |>
+  group_by(year, Town = str_to_title(str_squish(Town))) |>
+  summarise(Applicants = n(),
+            Winners    = sum(total_awarded > 0),
+            Received   = mean(total_awarded),
+            Expected   = mean(expected))
+
+write.csv(TownEVYear, "TownEVYear.csv", row.names = FALSE)
+
+
+##TESTS SECTION
+# Region
+RegionAOV <- aov(total_awarded ~ region, data = OneRowPerApplicant)
+summary(RegionAOV)
+TukeyHSD(RegionAOV)
+
+# Year
+YearAOV <- aov(total_awarded ~ factor(year), data = OneRowPerApplicant)
+summary(YearAOV)
+TukeyHSD(YearAOV)
+
+Controlled <- OneRowPerApplicant |>
+  left_join(PersonEV) |>
+  mutate(diff = total_awarded - expected)
+
+summary(aov(diff ~ region, data = Controlled))
